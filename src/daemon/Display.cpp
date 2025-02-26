@@ -76,14 +76,20 @@ namespace SDDM {
         return false;
     }
 
-    int fetchAvailableVt() {
+    int fetchAvailableVt(bool forAutologin = false) {
+    	// For autologin, always allocate a new VT to avoid TTY1 conflicts
+        if (forAutologin) {
+            return VirtualTerminal::setUpNewVt();
+        }
+    
+        // Original logic for non-autologin cases
         if (!isTtyInUse(QStringLiteral("tty" STRINGIFY(SDDM_INITIAL_VT)))) {
             return SDDM_INITIAL_VT;
-        }
+    	}
         const auto vt = VirtualTerminal::currentVt();
         if (vt > 0 && !isTtyInUse(QStringLiteral("tty%1").arg(vt))) {
             return vt;
-        }
+    	}
         return VirtualTerminal::setUpNewVt();
     }
 
@@ -121,13 +127,17 @@ namespace SDDM {
             }
             m_displayServer = new XorgDisplayServer(this);
             break;
-        case X11UserDisplayServerType:
-            if (seat()->canTTY()) {
-                m_terminalId = fetchAvailableVt();
-            }
-            m_displayServer = new XorgUserDisplayServer(this);
-            m_greeter->setDisplayServerCommand(XorgUserDisplayServer::command(this));
-            break;
+        // In the Display constructor, modify the autologin case:
+	case X11UserDisplayServerType:
+	    if (seat()->canTTY()) {
+	        // Check if this is an autologin scenario
+	        bool isAutologin = (!mainConfig.Autologin.User.get().isEmpty() && 
+	                           (daemonApp->first || mainConfig.Autologin.Relogin.get()));
+	        m_terminalId = fetchAvailableVt(isAutologin);
+	    }
+	    m_displayServer = new XorgUserDisplayServer(this);
+	    m_greeter->setDisplayServerCommand(XorgUserDisplayServer::command(this));
+	    break;
         case WaylandDisplayServerType:
             if (seat()->canTTY()) {
                 m_terminalId = fetchAvailableVt();
